@@ -64,6 +64,142 @@ use std::mem::ManuallyDrop;
 use std::slice;
 use std::sync::Arc;
 
+#[cfg(target_os = "macos")]
+fn apply_macos_widget_hacks(
+    window: &winit::window::Window,
+    settings: &crate::core::window::Settings,
+) {
+    #[cfg(target_os = "macos")]
+    // Apply only to widget windows
+    if !settings.transparent || settings.decorations {
+        return;
+    }
+
+    use objc2::rc::Retained;
+    use objc2_app_kit::{NSColor, NSView};
+    use winit::raw_window_handle::{HasWindowHandle, RawWindowHandle};
+
+    let Ok(handle) = window.window_handle() else {
+        return;
+    };
+
+    // AppKit window handler
+    let RawWindowHandle::AppKit(appkit) = handle.as_raw() else {
+        return;
+    };
+
+    let ns_view_ptr = appkit.ns_view.as_ptr() as *mut NSView;
+
+    unsafe {
+        use objc2_app_kit::{NSWindowStyleMask, NSWindowTitleVisibility};
+
+        let Some(ns_view) = Retained::<NSView>::retain(ns_view_ptr) else {
+            return;
+        };
+
+        let Some(ns_window) = ns_view.window() else {
+            return;
+        };
+        if let Some(layer) = ns_view.layer() {
+            // radius to match design
+            layer.setCornerRadius(20.0);
+            layer.setMasksToBounds(true);
+        }
+
+        ns_window.setStyleMask(NSWindowStyleMask::Borderless);
+
+        ns_window.setOpaque(false);
+        ns_window.setBackgroundColor(Some(&NSColor::clearColor()));
+        ns_window.setHasShadow(true);
+        ns_window.setTitleVisibility(NSWindowTitleVisibility::Hidden);
+        ns_window.setTitlebarAppearsTransparent(true);
+        ns_window.setMovableByWindowBackground(true);
+    }
+}
+
+#[cfg(target_os = "windows")]
+use windows::Win32::Foundation::HWND;
+
+#[cfg(target_os = "windows")]
+fn hwnd_from_winit(
+    window: &winit::window::Window,
+) -> Option<windows::Win32::Foundation::HWND> {
+    use std::ffi::c_void;
+    use winit::raw_window_handle::HasWindowHandle;
+    use winit::raw_window_handle::RawWindowHandle;
+
+    match handle.as_raw() {
+        RawWindowHandle::Win32(h) => {
+            // hwnd: NonZeroIsize
+            let raw = h.hwnd.get(); // isize
+            let ptr = raw as *mut c_void; // *mut c_void
+            Some(HWND(ptr))
+        }
+        _ => None,
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn apply_windows_widget_hacks(
+    window: &winit::window::Window,
+    settings: &window::Settings,
+) {
+    // Only transparent windows with no decorations
+    if !settings.transparent || settings.decorations {
+        return;
+    };
+
+    // Pro jistotu ještě po vytvoření vynutíme stejné vlastnosti.
+    window.set_decorations(false);
+    window.set_transparent(true);
+
+    use windows::Win32::Foundation::HWND;
+    use windows::Win32::Graphics::Dwm::DwmExtendFrameIntoClientArea;
+    use windows::Win32::Graphics::Gdi::{
+        CreateRoundRectRgn, HRGN, SetWindowRgn,
+    };
+    use windows::Win32::UI::Controls::MARGINS;
+    use windows::Win32::UI::WindowsAndMessaging::{
+        GWL_EXSTYLE, GetWindowLongW, SetWindowLongW, WS_EX_LAYERED,
+    };
+
+    if let Some(hwnd) = hwnd_from_winit(window) {
+        unsafe {
+            // Přidáme WS_EX_LAYERED – umožní lepší kompozici transparentního okna
+            let ex_style = GetWindowLongW(hwnd, GWL_EXSTYLE);
+            let new_ex_style = ex_style | WS_EX_LAYERED.0 as i32;
+            let _ = SetWindowLongW(hwnd, GWL_EXSTYLE, new_ex_style);
+
+            // Extentujeme glass frame do celé klientské oblasti, což typicky
+            // odstraní „černý okraj“/halo kolem obsahu.
+            let margins = MARGINS {
+                cxLeftWidth: 10,
+                cxRightWidth: 10,
+                cyTopHeight: 10,
+                cyBottomHeight: 10,
+            };
+            let _ = DwmExtendFrameIntoClientArea(hwnd, &margins);
+            let scale = window.scale_factor() as f32;
+
+            // ve windows se radius počítá jinak než na MacOs, proto je
+            // zde radius 40
+            let logical_radius = 40.0;
+            let radius = (logical_radius * scale) as i32;
+
+            let size = window.outer_size(); // PhysicalSize<u32>
+            let w = size.width as i32;
+            let h = size.height as i32;
+
+            let region: HRGN = CreateRoundRectRgn(0, 0, w, h, radius, radius);
+
+            if !region.is_invalid() {
+                // SetWindowRgn předá vlastnictví regionu oknu
+                let _ = SetWindowRgn(hwnd, region, true);
+            }
+        }
+    }
+}
+
 /// Runs a [`Program`] with the provided settings.
 pub fn run<P>(program: P) -> Result<(), Error>
 where
@@ -316,7 +452,7 @@ where
 
                                 let window_attributes =
                                     conversion::window_attributes(
-                                        settings,
+                                        settings.clone(),
                                         &title,
                                         scale_factor,
                                         monitor
@@ -349,6 +485,14 @@ where
                                 let window = event_loop
                                     .create_window(window_attributes)
                                     .expect("Create window");
+
+                                // our hacked MacOS window
+                                #[cfg(target_os = "macos")]
+                                apply_macos_widget_hacks(&window, &settings);
+
+                                //our hacked Windows window
+                                #[cfg(target_os = "windows")]
+                                apply_windows_widget_hacks(&window, &settings);
 
                                 #[cfg(target_os = "macos")]
                                 if let Some(position) = position {
