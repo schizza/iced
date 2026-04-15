@@ -128,7 +128,7 @@ fn hwnd_from_winit(
     use winit::raw_window_handle::HasWindowHandle;
     use winit::raw_window_handle::RawWindowHandle;
 
-    let hande = window.window_handle().ok()?;
+    let handle = window.window_handle().ok()?;
 
     match handle.as_raw() {
         RawWindowHandle::Win32(h) => {
