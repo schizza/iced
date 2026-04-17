@@ -237,9 +237,23 @@ fn apply_x11_rounded_shape(window: &winit::window::Window, window_id: u32) {
     use x11rb::protocol::shape;
     use x11rb::protocol::xproto::*;
 
-    let Ok((conn, _screen)) = x11rb::connect(None) else {
+    let Ok((conn, screen_num)) = x11rb::connect(None) else {
         return;
     };
+
+    // GNOME/Mutter, KWin, Picom and friends own `_NET_WM_CM_S<screen>` when a
+    // compositor is running. In that case we already get true ARGB transparency
+    // plus wgpu's anti-aliased `Border { radius }` in the iced content, which
+    // gives smooth (GNOME-quality) rounded corners for free. The XShape hack
+    // below is a 1-bit bounding mask and would *replace* those AA edges with
+    // zigzagging ones — exactly the "cranky border" users see. Skip it.
+    //
+    // The shape path stays as a fallback for non-composited X11 sessions
+    // (minimal WMs, old `startx` setups), where jagged rounded corners still
+    // look nicer than square ones.
+    if x11_compositor_running(&conn, screen_num) {
+        return;
+    }
 
     // Bail out if the Shape extension is not available.
     let Ok(ext) = conn.query_extension(b"SHAPE") else {
@@ -255,7 +269,9 @@ fn apply_x11_rounded_shape(window: &winit::window::Window, window_id: u32) {
     let w = size.width as u16;
     let h = size.height as u16;
     let logical_radius = 20.0_f32;
-    let r = (logical_radius * scale).max(1.0) as i16;
+    // Round (rather than truncate) to avoid asymmetric corner clipping on
+    // fractional DPI scales like 1.25x / 1.5x.
+    let r = (logical_radius * scale).round().max(1.0) as i16;
     let r_u16 = r as u16;
     let d = r_u16 * 2; // arc diameter
 
@@ -364,6 +380,37 @@ fn apply_x11_rounded_shape(window: &winit::window::Window, window_id: u32) {
     let _ = conn.free_pixmap(pixmap);
     let _ = conn.free_gc(gc);
     let _ = conn.flush();
+}
+
+/// Returns `true` when an X11 compositor currently owns the
+/// `_NET_WM_CM_S<screen>` selection for the given screen — the standard
+/// EWMH signal that ARGB transparency is being composited (GNOME/Mutter,
+/// KWin, Picom, Compton, ...).
+///
+/// This is the same check GTK, Qt, Firefox, and Electron use to decide
+/// whether to rely on native translucency.
+#[cfg(target_os = "linux")]
+fn x11_compositor_running<C: x11rb::connection::Connection>(
+    conn: &C,
+    screen: usize,
+) -> bool {
+    use x11rb::protocol::xproto::ConnectionExt;
+
+    let atom_name = format!("_NET_WM_CM_S{screen}");
+    let Ok(cookie) = conn.intern_atom(false, atom_name.as_bytes()) else {
+        return false;
+    };
+    let Ok(atom_reply) = cookie.reply() else {
+        return false;
+    };
+
+    let Ok(owner_cookie) = conn.get_selection_owner(atom_reply.atom) else {
+        return false;
+    };
+    owner_cookie
+        .reply()
+        .map(|r| r.owner != x11rb::NONE)
+        .unwrap_or(false)
 }
 
 /// Runs a [`Program`] with the provided settings.

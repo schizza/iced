@@ -75,15 +75,23 @@ fn solid_fs_main(
         input.border_radius * 2.0
     ) / 2.0;
 
+    // Derivative-based anti-aliasing: make the fill/border/outside transitions
+    // exactly one screen pixel wide regardless of DPI, logical scale factor or
+    // where the SDF lands sub-pixel. This is the standard pattern used by
+    // Cairo, Skia, Flutter and GTK4's GSK — without it, fractional scales
+    // and curved regions (rounded corners!) fall outside the implicit 1-unit
+    // AA band of a plain `clamp(0.5 - dist)` and show visible stepping.
+    let aa = max(fwidth(dist), 1e-4);
+
     if (input.border_width > 0.0) {
         mixed_color = mix(
             input.color,
             input.border_color,
-            clamp(0.5 + dist + input.border_width, 0.0, 1.0)
+            clamp(0.5 + (dist + input.border_width) / aa, 0.0, 1.0)
         );
     }
 
-    var quad_alpha: f32 = clamp(0.5-dist, 0.0, 1.0);
+    var quad_alpha: f32 = clamp(0.5 - dist / aa, 0.0, 1.0);
 
     let quad_color = mixed_color * quad_alpha;
 

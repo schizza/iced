@@ -172,13 +172,17 @@ fn gradient_fs_main(input: GradientVertexOutput) -> @location(0) vec4<f32> {
         input.border_radius * 2.0
     ) / 2.0;
 
+    // Derivative-based AA (see solid.wgsl for rationale): one-pixel transition
+    // width that adapts to the actual on-screen gradient of the SDF.
+    let aa = max(fwidth(dist), 1e-4);
+
     if (input.border_width > 0.0) {
         mixed_color = mix(
             mixed_color,
             input.border_color,
-            clamp(0.5 + dist + input.border_width, 0.0, 1.0)
+            clamp(0.5 + (dist + input.border_width) / aa, 0.0, 1.0)
         );
     }
 
-    return mixed_color * clamp(0.5-dist, 0.0, 1.0);
+    return mixed_color * clamp(0.5 - dist / aa, 0.0, 1.0);
 }
