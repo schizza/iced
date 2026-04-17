@@ -65,6 +65,7 @@ use std::slice;
 use std::sync::Arc;
 
 #[cfg(target_os = "macos")]
+#[allow(unsafe_code)]
 fn apply_macos_widget_hacks(
     window: &winit::window::Window,
     settings: &crate::core::window::Settings,
@@ -142,6 +143,7 @@ fn hwnd_from_winit(
 }
 
 #[cfg(target_os = "windows")]
+#[allow(unsafe_code)]
 fn apply_windows_widget_hacks(
     window: &winit::window::Window,
     settings: &window::Settings,
@@ -200,6 +202,168 @@ fn apply_windows_widget_hacks(
             }
         }
     }
+}
+
+#[cfg(target_os = "linux")]
+fn apply_linux_widget_hacks(
+    window: &winit::window::Window,
+    settings: &crate::core::window::Settings,
+) {
+    if !settings.transparent || settings.decorations {
+        return;
+    }
+
+    use winit::raw_window_handle::{HasWindowHandle, RawWindowHandle};
+
+    let handle = match window.window_handle() {
+        Ok(h) => h,
+        Err(_) => return,
+    };
+
+    // Only X11 needs a shape hack; Wayland compositors respect
+    // transparent + borderless natively.
+    let x11_window_id: u32 = match handle.as_raw() {
+        RawWindowHandle::Xlib(xlib) => xlib.window as u32,
+        RawWindowHandle::Xcb(xcb) => xcb.window.get() as u32,
+        _ => return,
+    };
+
+    apply_x11_rounded_shape(window, x11_window_id);
+}
+
+#[cfg(target_os = "linux")]
+fn apply_x11_rounded_shape(window: &winit::window::Window, window_id: u32) {
+    use x11rb::connection::Connection;
+    use x11rb::protocol::shape;
+    use x11rb::protocol::xproto::*;
+
+    let Ok((conn, _screen)) = x11rb::connect(None) else {
+        return;
+    };
+
+    // Bail out if the Shape extension is not available.
+    let Ok(ext) = conn.query_extension(b"SHAPE") else {
+        return;
+    };
+    let Ok(ext_reply) = ext.reply() else { return };
+    if !ext_reply.present {
+        return;
+    }
+
+    let scale = window.scale_factor() as f32;
+    let size = window.outer_size();
+    let w = size.width as u16;
+    let h = size.height as u16;
+    let logical_radius = 20.0_f32;
+    let r = (logical_radius * scale).max(1.0) as i16;
+    let r_u16 = r as u16;
+    let d = r_u16 * 2; // arc diameter
+
+    // 1-bit pixmap used as shape mask (1 = visible, 0 = clipped).
+    let Ok(pixmap) = conn.generate_id() else { return };
+    if conn.create_pixmap(1, pixmap, window_id, w, h).is_err() {
+        return;
+    }
+
+    let Ok(gc) = conn.generate_id() else { return };
+    if conn
+        .create_gc(gc, pixmap, &CreateGCAux::new().foreground(0))
+        .is_err()
+    {
+        return;
+    }
+
+    // Clear the mask (all transparent).
+    let _ = conn.poly_fill_rectangle(
+        pixmap,
+        gc,
+        &[Rectangle {
+            x: 0,
+            y: 0,
+            width: w,
+            height: h,
+        }],
+    );
+
+    // Switch to opaque and draw a rounded rectangle composed of
+    // two overlapping rectangles (cross shape) plus four corner arcs.
+    let _ = conn.change_gc(gc, &ChangeGCAux::new().foreground(1));
+
+    let _ = conn.poly_fill_rectangle(
+        pixmap,
+        gc,
+        &[
+            // Horizontal strip (full width, excluding top/bottom radius)
+            Rectangle {
+                x: 0,
+                y: r,
+                width: w,
+                height: h.saturating_sub(d),
+            },
+            // Vertical strip (full height, excluding left/right radius)
+            Rectangle {
+                x: r,
+                y: 0,
+                width: w.saturating_sub(d),
+                height: h,
+            },
+        ],
+    );
+
+    // Quarter-circle arcs for corners (angles in 64ths of a degree).
+    let _ = conn.poly_fill_arc(
+        pixmap,
+        gc,
+        &[
+            Arc {
+                x: 0,
+                y: 0,
+                width: d,
+                height: d,
+                angle1: 90 * 64,
+                angle2: 90 * 64,
+            },
+            Arc {
+                x: (w - d) as i16,
+                y: 0,
+                width: d,
+                height: d,
+                angle1: 0,
+                angle2: 90 * 64,
+            },
+            Arc {
+                x: 0,
+                y: (h - d) as i16,
+                width: d,
+                height: d,
+                angle1: 180 * 64,
+                angle2: 90 * 64,
+            },
+            Arc {
+                x: (w - d) as i16,
+                y: (h - d) as i16,
+                width: d,
+                height: d,
+                angle1: 270 * 64,
+                angle2: 90 * 64,
+            },
+        ],
+    );
+
+    // Apply the pixmap as the bounding shape of the window.
+    let _ = shape::mask(
+        &conn,
+        shape::SO::SET,
+        shape::SK::BOUNDING,
+        window_id,
+        0,
+        0,
+        pixmap,
+    );
+
+    let _ = conn.free_pixmap(pixmap);
+    let _ = conn.free_gc(gc);
+    let _ = conn.flush();
 }
 
 /// Runs a [`Program`] with the provided settings.
@@ -495,6 +659,9 @@ where
                                 //our hacked Windows window
                                 #[cfg(target_os = "windows")]
                                 apply_windows_widget_hacks(&window, &settings);
+
+                                #[cfg(target_os = "linux")]
+                                apply_linux_widget_hacks(&window, &settings);
 
                                 #[cfg(target_os = "macos")]
                                 if let Some(position) = position {
