@@ -148,60 +148,30 @@ fn apply_windows_widget_hacks(
     window: &winit::window::Window,
     settings: &window::Settings,
 ) {
-    // Only transparent windows with no decorations
+    // Windows native rendering path — no manual Win32 hacks.
+    //
+    // Earlier versions did SetWindowRgn (1-bit jagged corners),
+    // WS_EX_LAYERED + DwmExtendFrameIntoClientArea (broken with wgpu's
+    // opaque-only swapchain), and CreateRoundRectRgn (incompatible with
+    // DWM rounded corners). All of those fought with the native Win11
+    // rendering instead of using it.
+    //
+    // The native path now relies entirely on winit's standard API
+    // configured upstream in conversion.rs:
+    //   - decorations: false
+    //   - corner_preference: Round (DWM AA rounded corners)
+    //   - undecorated_shadow: true (DWM native drop shadow)
+    //
+    // wgpu surface remains opaque — the card content fills the window
+    // edge-to-edge, DWM draws the rounded shape and shadow outside
+    // window bounds. This is the standard Win11 modern app pattern.
     if !settings.transparent || settings.decorations {
         return;
     };
 
-    // Pro jistotu ještě po vytvoření vynutíme stejné vlastnosti.
-    window.set_decorations(false);
-    window.set_transparent(true);
-
-    use windows::Win32::Foundation::HWND;
-    use windows::Win32::Graphics::Dwm::DwmExtendFrameIntoClientArea;
-    use windows::Win32::Graphics::Gdi::{
-        CreateRoundRectRgn, HRGN, SetWindowRgn,
-    };
-    use windows::Win32::UI::Controls::MARGINS;
-    use windows::Win32::UI::WindowsAndMessaging::{
-        GWL_EXSTYLE, GetWindowLongW, SetWindowLongW, WS_EX_LAYERED,
-    };
-
-    if let Some(hwnd) = hwnd_from_winit(window) {
-        unsafe {
-            // Přidáme WS_EX_LAYERED – umožní lepší kompozici transparentního okna
-            let ex_style = GetWindowLongW(hwnd, GWL_EXSTYLE);
-            let new_ex_style = ex_style | WS_EX_LAYERED.0 as i32;
-            let _ = SetWindowLongW(hwnd, GWL_EXSTYLE, new_ex_style);
-
-            // Extentujeme glass frame do celé klientské oblasti, což typicky
-            // odstraní „černý okraj“/halo kolem obsahu.
-            let margins = MARGINS {
-                cxLeftWidth: 10,
-                cxRightWidth: 10,
-                cyTopHeight: 10,
-                cyBottomHeight: 10,
-            };
-            let _ = DwmExtendFrameIntoClientArea(hwnd, &margins);
-            let scale = window.scale_factor() as f32;
-
-            // ve windows se radius počítá jinak než na MacOs, proto je
-            // zde radius 40
-            let logical_radius = 40.0;
-            let radius = (logical_radius * scale) as i32;
-
-            let size = window.outer_size(); // PhysicalSize<u32>
-            let w = size.width as i32;
-            let h = size.height as i32;
-
-            let region: HRGN = CreateRoundRectRgn(0, 0, w, h, radius, radius);
-
-            if !region.is_invalid() {
-                // SetWindowRgn předá vlastnictví regionu oknu
-                let _ = SetWindowRgn(hwnd, region, true);
-            }
-        }
-    }
+    tracing::debug!(
+        "Windows borderless window: relying on native DWM rendering"
+    );
 }
 
 #[cfg(target_os = "linux")]
@@ -276,7 +246,9 @@ fn apply_x11_rounded_shape(window: &winit::window::Window, window_id: u32) {
     let d = r_u16 * 2; // arc diameter
 
     // 1-bit pixmap used as shape mask (1 = visible, 0 = clipped).
-    let Ok(pixmap) = conn.generate_id() else { return };
+    let Ok(pixmap) = conn.generate_id() else {
+        return;
+    };
     if conn.create_pixmap(1, pixmap, window_id, w, h).is_err() {
         return;
     }

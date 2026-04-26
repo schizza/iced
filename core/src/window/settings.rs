@@ -29,6 +29,8 @@ use crate::window::{Icon, Level, Position};
 
 pub use platform::PlatformSpecific;
 
+#[cfg(target_os = "windows")]
+pub use platform::CornerPreference;
 /// The window settings of an application.
 #[derive(Debug, Clone)]
 pub struct Settings {
