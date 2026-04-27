@@ -2015,6 +2015,11 @@ fn run_action<'a, P, C>(
                     window.raw.request_redraw();
                 }
             }
+            window::Action::RequestRedraw(id) => {
+                if let Some(window) = window_manager.get(id) {
+                    window.raw.request_redraw();
+                }
+            }
             window::Action::RelayoutAll => {
                 for (id, window) in window_manager.iter_mut() {
                     if let Some(ui) = interfaces.remove(&id) {

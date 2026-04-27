@@ -186,6 +186,9 @@ pub enum Action {
     /// Redraw all the windows.
     RedrawAll,
 
+    /// Request a redraw of the window. iced will call view() and present
+    /// on the next frame loop iteration.
+    RequestRedraw(Id),
     /// Recompute the layouts of all the windows.
     RelayoutAll,
 }
@@ -514,4 +517,10 @@ pub fn allow_automatic_tabbing<T>(enabled: bool) -> Task<T> {
     task::effect(crate::Action::Window(Action::SetAllowAutomaticTabbing(
         enabled,
     )))
+}
+
+/// Request that the window with the given [`Id`] be redrawn on the
+/// next frame.
+pub fn request_redraw<T>(id: Id) -> Task<T> {
+    task::effect(crate::Action::Window(Action::RequestRedraw(id)))
 }
