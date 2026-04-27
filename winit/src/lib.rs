@@ -825,6 +825,9 @@ async fn run_instance<P>(
     let mut messages = Vec::new();
     let mut actions = 0;
 
+    #[cfg(target_os = "windows")]
+    let mut presented_extra_windows = false;
+
     let mut ui_caches = FxHashMap::default();
     let mut user_interfaces = ManuallyDrop::new(FxHashMap::default());
     let mut clipboard = Clipboard::unconnected();
@@ -1021,6 +1024,11 @@ async fn run_instance<P>(
                 is_window_opening = false;
             }
             Event::EventLoopAwakened(event) => {
+                #[cfg(target_os = "windows")]
+                if matches!(&event, event::Event::NewEvents(_)) {
+                    presented_extra_windows = false;
+                }
+
                 match event {
                     event::Event::NewEvents(event::StartCause::Init) => {
                         for (_id, window) in window_manager.iter_mut() {
@@ -1351,6 +1359,116 @@ async fn run_instance<P>(
                                     }
                                 }
                             },
+                        }
+
+                        #[cfg(target_os = "windows")]
+                        if !presented_extra_windows {
+                            presented_extra_windows = true;
+
+                            for (extra_id, extra_window) in
+                                window_manager.iter_mut()
+                            {
+                                if extra_id == id {
+                                    continue;
+                                }
+
+                                let physical_size =
+                                    extra_window.state.physical_size();
+
+                                if physical_size.width == 0
+                                    || physical_size.height == 0
+                                {
+                                    continue;
+                                }
+
+                                if extra_window.surface_version
+                                    != extra_window.state.surface_version()
+                                {
+                                    let ui = user_interfaces
+                                        .remove(&extra_id)
+                                        .expect("Remove user interface");
+
+                                    let logical_size =
+                                        extra_window.state.logical_size();
+
+                                    let layout_span = debug::layout(extra_id);
+                                    let _ = user_interfaces.insert(
+                                        extra_id,
+                                        ui.relayout(
+                                            logical_size,
+                                            &mut extra_window.renderer,
+                                        ),
+                                    );
+                                    layout_span.finish();
+
+                                    current_compositor.configure_surface(
+                                        &mut extra_window.surface,
+                                        physical_size.width,
+                                        physical_size.height,
+                                    );
+
+                                    extra_window.surface_version =
+                                        extra_window.state.surface_version();
+                                }
+
+                                let cursor = extra_window.state.cursor();
+
+                                let extra_interface = user_interfaces
+                                    .get_mut(&extra_id)
+                                    .expect("Get user interface");
+
+                                let draw_span = debug::draw(extra_id);
+                                extra_interface.draw(
+                                    &mut extra_window.renderer,
+                                    extra_window.state.theme(),
+                                    &renderer::Style {
+                                        text_color: extra_window
+                                            .state
+                                            .text_color(),
+                                    },
+                                    cursor,
+                                );
+                                draw_span.finish();
+
+                                extra_window.draw_preedit();
+
+                                let present_span = debug::present(extra_id);
+
+                                match current_compositor.present(
+                                    &mut extra_window.renderer,
+                                    &mut extra_window.surface,
+                                    extra_window.state.viewport(),
+                                    extra_window.state.background_color(),
+                                    || extra_window.raw.pre_present_notify(),
+                                ) {
+                                    Ok(()) => {
+                                        crate::window::flush_windows_compositor();
+
+                                        present_span.finish();
+                                    }
+                                    Err(error) => match error {
+                                        compositor::SurfaceError::OutOfMemory => {
+                                            panic!("{error:?}");
+                                        }
+                                        compositor::SurfaceError::Outdated
+                                        | compositor::SurfaceError::Lost => {
+                                            present_span.finish();
+
+                                            crate::window::request_raw_redraw(
+                                                &extra_window.raw,
+                                            );
+                                        }
+                                        _ => {
+                                            present_span.finish();
+
+                                            log::error!(
+                                                "Error {error:?} when \
+                                                presenting extra surface."
+                                            );
+                                        }
+                                    },
+                                }
+                            }
                         }
                     }
                     event::Event::WindowEvent {
