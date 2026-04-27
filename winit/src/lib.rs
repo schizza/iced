@@ -119,33 +119,9 @@ fn apply_macos_widget_hacks(
 }
 
 #[cfg(target_os = "windows")]
-use windows::Win32::Foundation::HWND;
-
-#[cfg(target_os = "windows")]
-fn hwnd_from_winit(
-    window: &winit::window::Window,
-) -> Option<windows::Win32::Foundation::HWND> {
-    use std::ffi::c_void;
-    use winit::raw_window_handle::HasWindowHandle;
-    use winit::raw_window_handle::RawWindowHandle;
-
-    let handle = window.window_handle().ok()?;
-
-    match handle.as_raw() {
-        RawWindowHandle::Win32(h) => {
-            // hwnd: NonZeroIsize
-            let raw = h.hwnd.get(); // isize
-            let ptr = raw as *mut c_void; // *mut c_void
-            Some(HWND(ptr))
-        }
-        _ => None,
-    }
-}
-
-#[cfg(target_os = "windows")]
 #[allow(unsafe_code)]
 fn apply_windows_widget_hacks(
-    window: &winit::window::Window,
+    _window: &winit::window::Window,
     settings: &window::Settings,
 ) {
     // Windows native rendering path — no manual Win32 hacks.
@@ -1048,7 +1024,7 @@ async fn run_instance<P>(
                 match event {
                     event::Event::NewEvents(event::StartCause::Init) => {
                         for (_id, window) in window_manager.iter_mut() {
-                            window.raw.request_redraw();
+                            crate::window::request_raw_redraw(&window.raw);
                         }
                     }
                     event::Event::NewEvents(
@@ -1060,7 +1036,7 @@ async fn run_instance<P>(
                             if let Some(redraw_at) = window.redraw_at
                                 && redraw_at <= now
                             {
-                                window.raw.request_redraw();
+                                crate::window::request_raw_redraw(&window.raw);
                                 window.redraw_at = None;
                             }
                         }
@@ -1238,7 +1214,9 @@ async fn run_instance<P>(
                                         continue;
                                     }
 
-                                    window.raw.request_redraw();
+                                    crate::window::request_raw_redraw(
+                                        &window.raw,
+                                    );
                                 }
 
                                 let Some(next_compositor) = compositor.as_mut()
@@ -1318,6 +1296,9 @@ async fn run_instance<P>(
                             || window.raw.pre_present_notify(),
                         ) {
                             Ok(()) => {
+                                #[cfg(target_os = "windows")]
+                                crate::window::flush_windows_compositor();
+
                                 present_span.finish();
                             }
                             Err(error) => match error {
@@ -1348,7 +1329,9 @@ async fn run_instance<P>(
                                         );
                                     }
 
-                                    window.raw.request_redraw();
+                                    crate::window::request_raw_redraw(
+                                        &window.raw,
+                                    );
                                 }
                                 _ => {
                                     present_span.finish();
@@ -1362,7 +1345,9 @@ async fn run_instance<P>(
                                     for (_id, window) in
                                         window_manager.iter_mut()
                                     {
-                                        window.raw.request_redraw();
+                                        crate::window::request_raw_redraw(
+                                            &window.raw,
+                                        );
                                     }
                                 }
                             },
@@ -1395,7 +1380,7 @@ async fn run_instance<P>(
 
                         match window_event {
                             winit::event::WindowEvent::Resized(_) => {
-                                window.raw.request_redraw();
+                                crate::window::request_raw_redraw(&window.raw);
                             }
                             winit::event::WindowEvent::ThemeChanged(theme) => {
                                 let mode = conversion::theme_mode(theme);
@@ -1582,7 +1567,7 @@ async fn run_instance<P>(
                             }
 
                             for (_id, window) in window_manager.iter_mut() {
-                                window.raw.request_redraw();
+                                crate::window::request_raw_redraw(&window.raw);
                             }
                         }
 
@@ -2012,12 +1997,12 @@ fn run_action<'a, P, C>(
             }
             window::Action::RedrawAll => {
                 for (_id, window) in window_manager.iter_mut() {
-                    window.raw.request_redraw();
+                    crate::window::request_raw_redraw(&window.raw);
                 }
             }
             window::Action::RequestRedraw(id) => {
                 if let Some(window) = window_manager.get(id) {
-                    window.raw.request_redraw();
+                    crate::window::request_raw_redraw(&window.raw);
                 }
             }
             window::Action::RelayoutAll => {
@@ -2032,7 +2017,7 @@ fn run_action<'a, P, C>(
                         );
                     }
 
-                    window.raw.request_redraw();
+                    crate::window::request_raw_redraw(&window.raw);
                 }
             }
         },
@@ -2138,7 +2123,7 @@ fn run_action<'a, P, C>(
                     ),
                 );
 
-                window.raw.request_redraw();
+                crate::window::request_raw_redraw(&window.raw);
             }
         }
         Action::Exit => {

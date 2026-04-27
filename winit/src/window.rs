@@ -25,6 +25,51 @@ use winit::monitor::MonitorHandle;
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
+pub(crate) fn request_raw_redraw(window: &winit::window::Window) {
+    window.request_redraw();
+
+    #[cfg(target_os = "windows")]
+    force_windows_redraw(window);
+}
+
+#[cfg(target_os = "windows")]
+#[allow(unsafe_code)]
+pub(crate) fn flush_windows_compositor() {
+    unsafe {
+        let _ = windows::Win32::Graphics::Dwm::DwmFlush();
+    }
+}
+
+#[cfg(target_os = "windows")]
+#[allow(unsafe_code)]
+fn force_windows_redraw(window: &winit::window::Window) {
+    use crate::runtime::window::raw_window_handle::{
+        HasWindowHandle, RawWindowHandle,
+    };
+    use windows::Win32::Foundation::HWND;
+    use windows::Win32::Graphics::Gdi::{
+        HRGN, RDW_ALLCHILDREN, RDW_FRAME, RDW_INVALIDATE, RDW_UPDATENOW,
+        RedrawWindow,
+    };
+
+    let Ok(handle) = window.window_handle() else {
+        return;
+    };
+
+    let RawWindowHandle::Win32(handle) = handle.as_raw() else {
+        return;
+    };
+
+    unsafe {
+        let _ = RedrawWindow(
+            HWND(handle.hwnd.get() as _),
+            None,
+            HRGN(std::ptr::null_mut()),
+            RDW_INVALIDATE | RDW_UPDATENOW | RDW_ALLCHILDREN | RDW_FRAME,
+        );
+    }
+}
+
 pub struct WindowManager<P, C>
 where
     P: Program,
@@ -199,7 +244,7 @@ where
     pub fn request_redraw(&mut self, redraw_request: RedrawRequest) {
         match redraw_request {
             RedrawRequest::NextFrame => {
-                self.raw.request_redraw();
+                request_raw_redraw(&self.raw);
                 self.redraw_at = None;
             }
             RedrawRequest::At(at) => {
