@@ -30,6 +30,27 @@ pub enum Event {
 
     /// The system theme has changed.
     SystemThemeChanged(theme::Mode),
+
+    /// A platform specific event.
+    PlatformSpecific(PlatformSpecific),
+}
+
+/// A platform specific event
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PlatformSpecific {
+    /// A MacOS specific event
+    MacOS(MacOS),
+}
+
+/// Describes an event specific to MacOS
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum MacOS {
+    /// Triggered when the app receives an URL from the system
+    ///
+    /// _**Note:** For this event to be triggered, the executable needs to be properly [bundled]!_
+    ///
+    /// [bundled]: https://developer.apple.com/library/archive/documentation/CoreFoundation/Conceptual/CFBundles/BundleTypes/BundleTypes.html#//apple_ref/doc/uid/10000123i-CH101-SW19
+    ReceivedUrl(String),
 }
 
 /// A stream of runtime events.
@@ -178,7 +199,7 @@ impl<T> Subscription<T> {
     /// Check out the [`websocket`] example, which showcases this pattern to maintain a `WebSocket`
     /// connection open.
     ///
-    /// [`websocket`]: https://github.com/iced-rs/iced/tree/0.14/examples/websocket
+    /// [`websocket`]: https://github.com/iced-rs/iced/tree/master/examples/websocket
     pub fn run<S>(builder: fn() -> S) -> Self
     where
         S: Stream<Item = T> + MaybeSend + 'static,

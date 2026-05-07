@@ -37,7 +37,8 @@ where
             event: Event::Window(window::Event::RedrawRequested(_)),
             ..
         }
-        | subscription::Event::SystemThemeChanged(_) => None,
+        | subscription::Event::SystemThemeChanged(_)
+        | subscription::Event::PlatformSpecific(_) => None,
         subscription::Event::Interaction {
             window,
             event,

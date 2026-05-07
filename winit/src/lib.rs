@@ -607,7 +607,7 @@ where
                                 let target = settings.platform_specific.target.clone();
 
                                 let window_attributes = conversion::window_attributes(
-                                    settings,
+                                    settings.clone(),
                                     &title,
                                     scale_factor,
                                     monitor.or(event_loop.primary_monitor()),
