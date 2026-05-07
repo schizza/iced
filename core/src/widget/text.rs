@@ -27,11 +27,9 @@ use crate::renderer;
 use crate::text;
 use crate::text::paragraph::{self, Paragraph};
 use crate::widget::tree::{self, Tree};
-use crate::{
-    Color, Element, Layout, Length, Pixels, Rectangle, Size, Theme, Widget,
-};
+use crate::{Color, Element, Layout, Length, Pixels, Rectangle, Size, Theme, Widget};
 
-pub use text::{Alignment, LineHeight, Shaping, Wrapping};
+pub use text::{Alignment, Ellipsis, LineHeight, Shaping, Wrapping};
 
 /// A bunch of text.
 ///
@@ -55,6 +53,7 @@ pub use text::{Alignment, LineHeight, Shaping, Wrapping};
 ///         .into()
 /// }
 /// ```
+#[must_use]
 pub struct Text<'a, Theme, Renderer>
 where
     Theme: Catalog,
@@ -102,10 +101,7 @@ where
     /// Sets the [`Font`] of the [`Text`], if `Some`.
     ///
     /// [`Font`]: crate::text::Renderer::Font
-    pub fn font_maybe(
-        mut self,
-        font: Option<impl Into<Renderer::Font>>,
-    ) -> Self {
+    pub fn font_maybe(mut self, font: Option<impl Into<Renderer::Font>>) -> Self {
         self.format.font = font.map(Into::into);
         self
     }
@@ -135,10 +131,7 @@ where
     }
 
     /// Sets the [`alignment::Vertical`] of the [`Text`].
-    pub fn align_y(
-        mut self,
-        alignment: impl Into<alignment::Vertical>,
-    ) -> Self {
+    pub fn align_y(mut self, alignment: impl Into<alignment::Vertical>) -> Self {
         self.format.align_y = alignment.into();
         self
     }
@@ -155,8 +148,13 @@ where
         self
     }
 
+    /// Sets the [`Ellipsis`] strategy of the [`Text`].
+    pub fn ellipsis(mut self, ellipsis: Ellipsis) -> Self {
+        self.format.ellipsis = ellipsis;
+        self
+    }
+
     /// Sets the style of the [`Text`].
-    #[must_use]
     pub fn style(mut self, style: impl Fn(&Theme) -> Style + 'a) -> Self
     where
         Theme::Class<'a>: From<StyleFn<'a, Theme>>,
@@ -185,7 +183,6 @@ where
 
     /// Sets the style class of the [`Text`].
     #[cfg(feature = "advanced")]
-    #[must_use]
     pub fn class(mut self, class: impl Into<Theme::Class<'a>>) -> Self {
         self.class = class.into();
         self
@@ -195,8 +192,7 @@ where
 /// The internal state of a [`Text`] widget.
 pub type State<P> = paragraph::Plain<P>;
 
-impl<Message, Theme, Renderer> Widget<Message, Theme, Renderer>
-    for Text<'_, Theme, Renderer>
+impl<Message, Theme, Renderer> Widget<Message, Theme, Renderer> for Text<'_, Theme, Renderer>
 where
     Theme: Catalog,
     Renderer: text::Renderer,
@@ -281,6 +277,7 @@ pub struct Format<Font> {
     pub align_y: alignment::Vertical,
     pub shaping: Shaping,
     pub wrapping: Wrapping,
+    pub ellipsis: Ellipsis,
 }
 
 impl<Font> Default for Format<Font> {
@@ -295,6 +292,7 @@ impl<Font> Default for Format<Font> {
             align_y: alignment::Vertical::Top,
             shaping: Shaping::default(),
             wrapping: Wrapping::default(),
+            ellipsis: Ellipsis::default(),
         }
     }
 }
@@ -326,6 +324,8 @@ where
             align_y: format.align_y,
             shaping: format.shaping,
             wrapping: format.wrapping,
+            ellipsis: format.ellipsis,
+            hint_factor: renderer.scale_factor(),
         });
 
         paragraph.min_bounds()
@@ -363,9 +363,7 @@ where
     Theme: Catalog + 'a,
     Renderer: text::Renderer + 'a,
 {
-    fn from(
-        text: Text<'a, Theme, Renderer>,
-    ) -> Element<'a, Message, Theme, Renderer> {
+    fn from(text: Text<'a, Theme, Renderer>) -> Element<'a, Message, Theme, Renderer> {
         Element::new(text)
     }
 }
@@ -380,8 +378,7 @@ where
     }
 }
 
-impl<'a, Message, Theme, Renderer> From<&'a str>
-    for Element<'a, Message, Theme, Renderer>
+impl<'a, Message, Theme, Renderer> From<&'a str> for Element<'a, Message, Theme, Renderer>
 where
     Theme: Catalog + 'a,
     Renderer: text::Renderer + 'a,
@@ -437,41 +434,41 @@ pub fn default(_theme: &Theme) -> Style {
 /// Text with the default base color.
 pub fn base(theme: &Theme) -> Style {
     Style {
-        color: Some(theme.palette().text),
+        color: Some(theme.seed().text),
     }
 }
 
 /// Text conveying some important information, like an action.
 pub fn primary(theme: &Theme) -> Style {
     Style {
-        color: Some(theme.palette().primary),
+        color: Some(theme.seed().primary),
     }
 }
 
 /// Text conveying some secondary information, like a footnote.
 pub fn secondary(theme: &Theme) -> Style {
     Style {
-        color: Some(theme.extended_palette().secondary.base.color),
+        color: Some(theme.palette().secondary.base.color),
     }
 }
 
 /// Text conveying some positive information, like a successful event.
 pub fn success(theme: &Theme) -> Style {
     Style {
-        color: Some(theme.palette().success),
+        color: Some(theme.seed().success),
     }
 }
 
 /// Text conveying some mildly negative information, like a warning.
 pub fn warning(theme: &Theme) -> Style {
     Style {
-        color: Some(theme.palette().warning),
+        color: Some(theme.seed().warning),
     }
 }
 
 /// Text conveying some negative information, like an error.
 pub fn danger(theme: &Theme) -> Style {
     Style {
-        color: Some(theme.palette().danger),
+        color: Some(theme.seed().danger),
     }
 }

@@ -71,17 +71,13 @@ impl Cache {
         let svg = match handle.data() {
             svg::Data::Path(path) => fs::read_to_string(path)
                 .ok()
-                .and_then(|contents| {
-                    usvg::Tree::from_str(&contents, &options).ok()
-                })
+                .and_then(|contents| usvg::Tree::from_str(&contents, &options).ok())
                 .map(Svg::Loaded)
                 .unwrap_or(Svg::NotFound),
-            svg::Data::Bytes(bytes) => {
-                match usvg::Tree::from_data(bytes, &options) {
-                    Ok(tree) => Svg::Loaded(tree),
-                    Err(_) => Svg::NotFound,
-                }
-            }
+            svg::Data::Bytes(bytes) => match usvg::Tree::from_data(bytes, &options) {
+                Ok(tree) => Svg::Loaded(tree),
+                Err(_) => Svg::NotFound,
+            },
         };
 
         self.should_trim = true;
@@ -98,19 +94,13 @@ impl Cache {
         belt: &mut wgpu::util::StagingBelt,
         handle: &svg::Handle,
         color: Option<Color>,
-        size: Size,
-        scale: f32,
+        size: Size<u32>,
         atlas: &mut Atlas,
     ) -> Option<&atlas::Entry> {
         let id = handle.id();
 
-        let (width, height) = (
-            (scale * size.width).ceil() as u32,
-            (scale * size.height).ceil() as u32,
-        );
-
         let color = color.map(Color::into_rgba8);
-        let key = (id, width, height, color);
+        let key = (id, size.width, size.height, color);
 
         // TODO: Optimize!
         // We currently rerasterize the SVG when its size changes. This is slow
@@ -125,22 +115,18 @@ impl Cache {
 
         match self.load(handle) {
             Svg::Loaded(tree) => {
-                if width == 0 || height == 0 {
-                    return None;
-                }
-
                 // TODO: Optimize!
                 // We currently rerasterize the SVG when its size changes. This is slow
                 // as heck. A GPU rasterizer like `pathfinder` may perform better.
                 // It would be cool to be able to smooth resize the `svg` example.
-                let mut img = tiny_skia::Pixmap::new(width, height)?;
+                let mut img = tiny_skia::Pixmap::new(size.width, size.height)?;
 
                 let tree_size = tree.size().to_int_size();
 
-                let target_size = if width > height {
-                    tree_size.scale_to_width(width)
+                let target_size = if size.width > size.height {
+                    tree_size.scale_to_height(size.height)
                 } else {
-                    tree_size.scale_to_height(height)
+                    tree_size.scale_to_width(size.width)
                 };
 
                 let transform = if let Some(target_size) = target_size {
@@ -157,15 +143,12 @@ impl Cache {
 
                 // SVG rendering can panic on malformed or complex vectors.
                 // We catch panics to prevent crashes and continue gracefully.
-                let render =
-                    panic::catch_unwind(panic::AssertUnwindSafe(|| {
-                        resvg::render(tree, transform, &mut img.as_mut());
-                    }));
+                let render = panic::catch_unwind(panic::AssertUnwindSafe(|| {
+                    resvg::render(tree, transform, &mut img.as_mut());
+                }));
 
                 if let Err(error) = render {
-                    log::warn!(
-                        "SVG rendering for {handle:?} panicked: {error:?}"
-                    );
+                    log::warn!("SVG rendering for {handle:?} panicked: {error:?}");
                 }
 
                 let mut rgba = img.take();
@@ -180,10 +163,10 @@ impl Cache {
                     });
                 }
 
-                let allocation = atlas
-                    .upload(device, encoder, belt, width, height, &rgba)?;
+                let allocation =
+                    atlas.upload(device, encoder, belt, size.width, size.height, &rgba)?;
 
-                log::debug!("allocating {id} {width}x{height}");
+                log::debug!("allocating {id} {}x{}", size.width, size.height);
 
                 let _ = self.svg_hits.insert(id);
                 let _ = self.rasterized_hits.insert(key);

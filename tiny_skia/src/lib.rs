@@ -5,7 +5,6 @@ pub mod window;
 mod engine;
 mod layer;
 mod primitive;
-mod settings;
 mod text;
 
 #[cfg(feature = "image")]
@@ -23,15 +22,12 @@ pub use iced_graphics::core;
 
 pub use layer::Layer;
 pub use primitive::Primitive;
-pub use settings::Settings;
 
 #[cfg(feature = "geometry")]
 pub use geometry::Geometry;
 
 use crate::core::renderer;
-use crate::core::{
-    Background, Color, Font, Pixels, Point, Rectangle, Size, Transformation,
-};
+use crate::core::{Background, Color, Font, Pixels, Point, Rectangle, Size, Transformation};
 use crate::engine::Engine;
 use crate::graphics::Viewport;
 use crate::graphics::compositor;
@@ -43,17 +39,15 @@ use crate::graphics::text::{Editor, Paragraph};
 /// [`iced`]: https://github.com/iced-rs/iced
 #[derive(Debug)]
 pub struct Renderer {
-    default_font: Font,
-    default_text_size: Pixels,
+    settings: renderer::Settings,
     layers: layer::Stack,
     engine: Engine, // TODO: Shared engine
 }
 
 impl Renderer {
-    pub fn new(default_font: Font, default_text_size: Pixels) -> Self {
+    pub fn new(settings: renderer::Settings) -> Self {
         Self {
-            default_font,
-            default_text_size,
+            settings,
             layers: layer::Stack::new(),
             engine: Engine::new(),
         }
@@ -73,7 +67,6 @@ impl Renderer {
         background_color: Color,
     ) {
         let scale_factor = viewport.scale_factor();
-
         self.layers.flush();
 
         for &damage_bounds in damage {
@@ -92,9 +85,7 @@ impl Renderer {
             pixels.fill_path(
                 &path,
                 &tiny_skia::Paint {
-                    shader: tiny_skia::Shader::SolidColor(engine::into_color(
-                        background_color,
-                    )),
+                    shader: tiny_skia::Shader::SolidColor(engine::into_color(background_color)),
                     anti_alias: false,
                     blend_mode: tiny_skia::BlendMode::Source,
                     ..Default::default()
@@ -105,8 +96,7 @@ impl Renderer {
             );
 
             for layer in self.layers.iter() {
-                let Some(layer_bounds) =
-                    damage_bounds.intersection(&(layer.bounds * scale_factor))
+                let Some(layer_bounds) = damage_bounds.intersection(&(layer.bounds * scale_factor))
                 else {
                     continue;
                 };
@@ -132,10 +122,8 @@ impl Renderer {
                     let render_span = debug::render(debug::Primitive::Triangle);
 
                     for group in &layer.primitives {
-                        let Some(group_bounds) = (group.clip_bounds()
-                            * group.transformation()
-                            * scale_factor)
-                            .intersection(&layer_bounds)
+                        let Some(group_bounds) =
+                            (group.clip_bounds() * scale_factor).intersection(&layer_bounds)
                         else {
                             continue;
                         };
@@ -145,8 +133,7 @@ impl Renderer {
                         for primitive in group.as_slice() {
                             self.engine.draw_primitive(
                                 primitive,
-                                group.transformation()
-                                    * Transformation::scale(scale_factor),
+                                Transformation::scale(scale_factor) * group.transformation(),
                                 pixels,
                                 clip_mask,
                                 group_bounds,
@@ -182,8 +169,7 @@ impl Renderer {
                         for text in group.as_slice() {
                             self.engine.draw_text(
                                 text,
-                                group.transformation()
-                                    * Transformation::scale(scale_factor),
+                                Transformation::scale(scale_factor) * group.transformation(),
                                 pixels,
                                 clip_mask,
                                 layer_bounds,
@@ -217,25 +203,15 @@ impl core::Renderer for Renderer {
         self.layers.pop_transformation();
     }
 
-    fn fill_quad(
-        &mut self,
-        quad: renderer::Quad,
-        background: impl Into<Background>,
-    ) {
+    fn fill_quad(&mut self, quad: renderer::Quad, background: impl Into<Background>) {
         let (layer, transformation) = self.layers.current_mut();
         layer.draw_quad(quad, background.into(), transformation);
-    }
-
-    fn reset(&mut self, new_bounds: Rectangle) {
-        self.layers.reset(new_bounds);
     }
 
     fn allocate_image(
         &mut self,
         _handle: &core::image::Handle,
-        callback: impl FnOnce(Result<core::image::Allocation, core::image::Error>)
-        + Send
-        + 'static,
+        callback: impl FnOnce(Result<core::image::Allocation, core::image::Error>) + Send + 'static,
     ) {
         #[cfg(feature = "image")]
         #[allow(unsafe_code)]
@@ -245,6 +221,19 @@ impl core::Renderer for Renderer {
         #[cfg(not(feature = "image"))]
         callback(Err(core::image::Error::Unsupported));
     }
+
+    fn hint(&mut self, _scale_factor: f32) {
+        // TODO: No hinting supported
+        // We'll replace `tiny-skia` with `vello_cpu` soon
+    }
+
+    fn scale_factor(&self) -> Option<f32> {
+        None
+    }
+
+    fn reset(&mut self, new_bounds: Rectangle) {
+        self.layers.reset(new_bounds);
+    }
 }
 
 impl core::text::Renderer for Renderer {
@@ -252,7 +241,7 @@ impl core::text::Renderer for Renderer {
     type Paragraph = Paragraph;
     type Editor = Editor;
 
-    const ICON_FONT: Font = Font::with_name("Iced-Icons");
+    const ICON_FONT: Font = Font::new("Iced-Icons");
     const CHECKMARK_ICON: char = '\u{f00c}';
     const ARROW_DOWN_ICON: char = '\u{e800}';
     const ICED_LOGO: char = '\u{e801}';
@@ -262,11 +251,11 @@ impl core::text::Renderer for Renderer {
     const SCROLL_RIGHT_ICON: char = '\u{e805}';
 
     fn default_font(&self) -> Self::Font {
-        self.default_font
+        self.settings.default_font
     }
 
     fn default_size(&self) -> Pixels {
-        self.default_text_size
+        self.settings.default_text_size
     }
 
     fn fill_paragraph(
@@ -278,13 +267,7 @@ impl core::text::Renderer for Renderer {
     ) {
         let (layer, transformation) = self.layers.current_mut();
 
-        layer.draw_paragraph(
-            text,
-            position,
-            color,
-            clip_bounds,
-            transformation,
-        );
+        layer.draw_paragraph(text, position, color, clip_bounds, transformation);
     }
 
     fn fill_editor(
@@ -336,11 +319,7 @@ impl graphics::geometry::Renderer for Renderer {
                 text,
                 clip_bounds,
             } => {
-                layer.draw_primitive_group(
-                    primitives,
-                    clip_bounds,
-                    transformation,
-                );
+                layer.draw_primitive_group(primitives, clip_bounds, transformation);
 
                 for image in images {
                     layer.draw_image(image, transformation);
@@ -349,21 +328,13 @@ impl graphics::geometry::Renderer for Renderer {
                 layer.draw_text_group(text, clip_bounds, transformation);
             }
             Geometry::Cache(cache) => {
-                layer.draw_primitive_cache(
-                    cache.primitives,
-                    cache.clip_bounds,
-                    transformation,
-                );
+                layer.draw_primitive_cache(cache.primitives, cache.clip_bounds, transformation);
 
                 for image in cache.images.iter() {
                     layer.draw_image(image.clone(), transformation);
                 }
 
-                layer.draw_text_cache(
-                    cache.text,
-                    cache.clip_bounds,
-                    transformation,
-                );
+                layer.draw_text_cache(cache.text, cache.clip_bounds, transformation);
             }
         }
     }
@@ -390,19 +361,11 @@ impl core::image::Renderer for Renderer {
         self.engine.raster_pipeline.load(handle)
     }
 
-    fn measure_image(
-        &self,
-        handle: &Self::Handle,
-    ) -> Option<crate::core::Size<u32>> {
+    fn measure_image(&self, handle: &Self::Handle) -> Option<crate::core::Size<u32>> {
         self.engine.raster_pipeline.dimensions(handle)
     }
 
-    fn draw_image(
-        &mut self,
-        image: core::Image,
-        bounds: Rectangle,
-        clip_bounds: Rectangle,
-    ) {
+    fn draw_image(&mut self, image: core::Image, bounds: Rectangle, clip_bounds: Rectangle) {
         let (layer, transformation) = self.layers.current_mut();
         layer.draw_raster(image, bounds, clip_bounds, transformation);
     }
@@ -410,19 +373,11 @@ impl core::image::Renderer for Renderer {
 
 #[cfg(feature = "svg")]
 impl core::svg::Renderer for Renderer {
-    fn measure_svg(
-        &self,
-        handle: &core::svg::Handle,
-    ) -> crate::core::Size<u32> {
+    fn measure_svg(&self, handle: &core::svg::Handle) -> crate::core::Size<u32> {
         self.engine.vector_pipeline.viewport_dimensions(handle)
     }
 
-    fn draw_svg(
-        &mut self,
-        svg: core::Svg,
-        bounds: Rectangle,
-        clip_bounds: Rectangle,
-    ) {
+    fn draw_svg(&mut self, svg: core::Svg, bounds: Rectangle, clip_bounds: Rectangle) {
         let (layer, transformation) = self.layers.current_mut();
         layer.draw_svg(svg, bounds, clip_bounds, transformation);
     }
@@ -433,18 +388,13 @@ impl compositor::Default for Renderer {
 }
 
 impl renderer::Headless for Renderer {
-    async fn new(
-        default_font: Font,
-        default_text_size: Pixels,
-        backend: Option<&str>,
-    ) -> Option<Self> {
-        if backend.is_some_and(|backend| {
-            !["tiny-skia", "tiny_skia"].contains(&backend)
-        }) {
+    async fn new(settings: renderer::Settings, backend: Option<&str>) -> Option<Self> {
+        if backend.is_some_and(|backend| !["tiny-skia", "tiny_skia", "software"].contains(&backend))
+        {
             return None;
         }
 
-        Some(Self::new(default_font, default_text_size))
+        Some(Self::new(settings))
     }
 
     fn name(&self) -> String {

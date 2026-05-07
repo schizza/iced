@@ -30,9 +30,7 @@
 //! ```
 use std::ops::RangeInclusive;
 
-pub use crate::slider::{
-    Catalog, Handle, HandleShape, Status, Style, StyleFn, default,
-};
+pub use crate::slider::{Catalog, Handle, HandleShape, Status, Style, StyleFn, default};
 
 use crate::core::border::Border;
 use crate::core::keyboard;
@@ -43,10 +41,7 @@ use crate::core::renderer;
 use crate::core::touch;
 use crate::core::widget::tree::{self, Tree};
 use crate::core::window;
-use crate::core::{
-    self, Clipboard, Element, Event, Length, Pixels, Point, Rectangle, Shell,
-    Size, Widget,
-};
+use crate::core::{self, Element, Event, Length, Pixels, Point, Rectangle, Shell, Size, Widget};
 
 /// An vertical bar and a handle that selects a single value from a range of
 /// values.
@@ -252,7 +247,6 @@ where
         layout: Layout<'_>,
         cursor: mouse::Cursor,
         _renderer: &Renderer,
-        _clipboard: &mut dyn Clipboard,
         shell: &mut Shell<'_, Message>,
         _viewport: &Rectangle,
     ) {
@@ -278,9 +272,8 @@ where
                 let start = (*self.range.start()).into();
                 let end = (*self.range.end()).into();
 
-                let percent = 1.0
-                    - f64::from(cursor_position.y - bounds.y)
-                        / f64::from(bounds.height);
+                let percent =
+                    1.0 - f64::from(cursor_position.y - bounds.y) / f64::from(bounds.height);
 
                 let steps = (percent * (end - start) / step).round();
                 let value = steps * step + start;
@@ -336,12 +329,8 @@ where
         match event {
             Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left))
             | Event::Touch(touch::Event::FingerPressed { .. }) => {
-                if let Some(cursor_position) =
-                    cursor.position_over(layout.bounds())
-                {
-                    if state.keyboard_modifiers.control()
-                        || state.keyboard_modifiers.command()
-                    {
+                if let Some(cursor_position) = cursor.position_over(layout.bounds()) {
+                    if state.keyboard_modifiers.control() || state.keyboard_modifiers.command() {
                         let _ = self.default.map(change);
                         state.is_dragging = false;
                     } else {
@@ -354,54 +343,51 @@ where
             }
             Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left))
             | Event::Touch(touch::Event::FingerLifted { .. })
-            | Event::Touch(touch::Event::FingerLost { .. }) => {
-                if is_dragging {
-                    if let Some(on_release) = self.on_release.clone() {
-                        shell.publish(on_release);
-                    }
-                    state.is_dragging = false;
+            | Event::Touch(touch::Event::FingerLost { .. })
+                if is_dragging =>
+            {
+                if let Some(on_release) = self.on_release.clone() {
+                    shell.publish(on_release);
                 }
+                state.is_dragging = false;
             }
             Event::Mouse(mouse::Event::CursorMoved { .. })
-            | Event::Touch(touch::Event::FingerMoved { .. }) => {
-                if is_dragging {
-                    let _ =
-                        cursor.land().position().and_then(locate).map(change);
+            | Event::Touch(touch::Event::FingerMoved { .. })
+                if is_dragging =>
+            {
+                let _ = cursor.land().position().and_then(locate).map(change);
 
-                    shell.capture_event();
-                }
+                shell.capture_event();
             }
             Event::Mouse(mouse::Event::WheelScrolled { delta })
-                if state.keyboard_modifiers.control() =>
+                if state.keyboard_modifiers.control() && cursor.is_over(layout.bounds()) =>
             {
-                if cursor.is_over(layout.bounds()) {
-                    let delta = match *delta {
-                        mouse::ScrollDelta::Lines { x: _, y } => y,
-                        mouse::ScrollDelta::Pixels { x: _, y } => y,
-                    };
+                let delta = match *delta {
+                    mouse::ScrollDelta::Lines { x: _, y } => y,
+                    mouse::ScrollDelta::Pixels { x: _, y } => y,
+                };
 
-                    if delta < 0.0 {
-                        let _ = decrement(current_value).map(change);
-                    } else {
-                        let _ = increment(current_value).map(change);
-                    }
-
-                    shell.capture_event();
+                if delta < 0.0 {
+                    let _ = decrement(current_value).map(change);
+                } else {
+                    let _ = increment(current_value).map(change);
                 }
+
+                shell.capture_event();
             }
-            Event::Keyboard(keyboard::Event::KeyPressed { key, .. }) => {
-                if cursor.is_over(layout.bounds()) {
-                    match key {
-                        Key::Named(key::Named::ArrowUp) => {
-                            let _ = increment(current_value).map(change);
-                            shell.capture_event();
-                        }
-                        Key::Named(key::Named::ArrowDown) => {
-                            let _ = decrement(current_value).map(change);
-                            shell.capture_event();
-                        }
-                        _ => (),
+            Event::Keyboard(keyboard::Event::KeyPressed { key, .. })
+                if cursor.is_over(layout.bounds()) =>
+            {
+                match key {
+                    Key::Named(key::Named::ArrowUp) => {
+                        let _ = increment(current_value).map(change);
+                        shell.capture_event();
                     }
+                    Key::Named(key::Named::ArrowDown) => {
+                        let _ = decrement(current_value).map(change);
+                        shell.capture_event();
+                    }
+                    _ => (),
                 }
             }
             Event::Keyboard(keyboard::Event::ModifiersChanged(modifiers)) => {
@@ -437,19 +423,15 @@ where
     ) {
         let bounds = layout.bounds();
 
-        let style =
-            theme.style(&self.class, self.status.unwrap_or(Status::Active));
+        let style = theme.style(&self.class, self.status.unwrap_or(Status::Active));
 
-        let (handle_width, handle_height, handle_border_radius) =
-            match style.handle.shape {
-                HandleShape::Circle { radius } => {
-                    (radius * 2.0, radius * 2.0, radius.into())
-                }
-                HandleShape::Rectangle {
-                    width,
-                    border_radius,
-                } => (f32::from(width), bounds.width, border_radius),
-            };
+        let (handle_width, handle_height, handle_border_radius) = match style.handle.shape {
+            HandleShape::Circle { radius } => (radius * 2.0, radius * 2.0, radius.into()),
+            HandleShape::Rectangle {
+                width,
+                border_radius,
+            } => (f32::from(width), bounds.width, border_radius),
+        };
 
         let value = self.value.into() as f32;
         let (range_start, range_end) = {
@@ -461,8 +443,7 @@ where
         let offset = if range_start >= range_end {
             0.0
         } else {
-            (bounds.height - handle_width) * (value - range_end)
-                / (range_start - range_end)
+            (bounds.height - handle_width) * (value - range_end) / (range_start - range_end)
         };
 
         let rail_x = bounds.x + bounds.width / 2.0;
@@ -544,8 +525,7 @@ where
     }
 }
 
-impl<'a, T, Message, Theme, Renderer>
-    From<VerticalSlider<'a, T, Message, Theme>>
+impl<'a, T, Message, Theme, Renderer> From<VerticalSlider<'a, T, Message, Theme>>
     for Element<'a, Message, Theme, Renderer>
 where
     T: Copy + Into<f64> + num_traits::FromPrimitive + 'a,

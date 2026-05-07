@@ -254,7 +254,7 @@
 //!
 //! fn view(state: &State) -> Element<'_, Message> {
 //!     button("I am a styled button!").style(|theme: &Theme, status| {
-//!         let palette = theme.extended_palette();
+//!         let palette = theme.palette();
 //!
 //!         match status {
 //!             button::Status::Active => {
@@ -271,15 +271,13 @@
 //! Widgets that can be in multiple different states will also provide the closure
 //! with some [`Status`], allowing you to use a different style for each state.
 //!
-//! You can extract the [`Palette`] colors of a [`Theme`] with the [`palette`] or
-//! [`extended_palette`] methods.
+//! You can extract the [`Palette`] colors of a [`Theme`] with the [`palette`] method.
 //!
 //! Most widgets provide styling functions for your convenience in their respective modules;
 //! like [`container::rounded_box`], [`button::primary`], or [`text::danger`].
 //!
 //! [`Status`]: widget::button::Status
 //! [`palette`]: Theme::palette
-//! [`extended_palette`]: Theme::extended_palette
 //! [`container::rounded_box`]: widget::container::rounded_box
 //! [`button::primary`]: widget::button::primary
 //! [`text::danger`]: widget::text::danger
@@ -532,10 +530,9 @@ pub use crate::core::gradient;
 pub use crate::core::padding;
 pub use crate::core::theme;
 pub use crate::core::{
-    Alignment, Animation, Background, Border, Color, ContentFit, Degrees,
-    Function, Gradient, Length, Never, Padding, Pixels, Point, Radians,
-    Rectangle, Rotation, Settings, Shadow, Size, Theme, Transformation, Vector,
-    never,
+    Alignment, Animation, Background, Border, Color, ContentFit, Degrees, Function, Gradient,
+    Length, Never, Padding, Pixels, Point, Radians, Rectangle, Rotation, Settings, Shadow, Size,
+    Theme, Transformation, Vector, never,
 };
 pub use crate::program::Preset;
 pub use crate::program::message;
@@ -562,9 +559,14 @@ pub mod task {
 
 pub mod clipboard {
     //! Access the clipboard.
-    pub use crate::runtime::clipboard::{
-        read, read_primary, write, write_primary,
-    };
+    pub use crate::core::clipboard::{Content, Error, Kind};
+    pub use crate::runtime::clipboard::{read, read_files, read_html, read_text, write};
+
+    #[cfg(feature = "image")]
+    pub use crate::core::clipboard::Image;
+
+    #[cfg(feature = "image")]
+    pub use crate::runtime::clipboard::read_image;
 }
 
 pub mod executor {
@@ -582,7 +584,7 @@ pub mod font {
 pub mod event {
     //! Handle events of a user interface.
     pub use crate::core::event::{Event, Status};
-    pub use iced_futures::event::{listen, listen_raw, listen_with};
+    pub use iced_futures::event::{listen, listen_raw, listen_url, listen_with};
 }
 
 pub mod keyboard {
@@ -594,9 +596,7 @@ pub mod keyboard {
 
 pub mod mouse {
     //! Listen and react to mouse events.
-    pub use crate::core::mouse::{
-        Button, Cursor, Event, Interaction, ScrollDelta,
-    };
+    pub use crate::core::mouse::{Button, Cursor, Event, Interaction, ScrollDelta};
 }
 
 pub mod system {
@@ -615,12 +615,8 @@ pub mod overlay {
     /// This is an alias of an [`overlay::Element`] with a default `Renderer`.
     ///
     /// [`overlay::Element`]: crate::core::overlay::Element
-    pub type Element<
-        'a,
-        Message,
-        Theme = crate::Renderer,
-        Renderer = crate::Renderer,
-    > = crate::core::overlay::Element<'a, Message, Theme, Renderer>;
+    pub type Element<'a, Message, Theme = crate::Theme, Renderer = crate::Renderer> =
+        crate::core::overlay::Element<'a, Message, Theme, Renderer>;
 
     pub use iced_widget::overlay::*;
 }
@@ -668,12 +664,8 @@ pub use daemon::daemon;
 /// A generic widget.
 ///
 /// This is an alias of an `iced_native` element with a default `Renderer`.
-pub type Element<
-    'a,
-    Message,
-    Theme = crate::Theme,
-    Renderer = crate::Renderer,
-> = crate::core::Element<'a, Message, Theme, Renderer>;
+pub type Element<'a, Message, Theme = crate::Theme, Renderer = crate::Renderer> =
+    crate::core::Element<'a, Message, Theme, Renderer>;
 
 /// The result of running an iced program.
 pub type Result = std::result::Result<(), Error>;
@@ -711,8 +703,7 @@ pub type Result = std::result::Result<(), Error>;
 /// ```
 pub fn run<State, Message, Theme, Renderer>(
     update: impl application::UpdateFn<State, Message> + 'static,
-    view: impl for<'a> application::ViewFn<'a, State, Message, Theme, Renderer>
-    + 'static,
+    view: impl for<'a> application::ViewFn<'a, State, Message, Theme, Renderer> + 'static,
 ) -> Result
 where
     State: Default + 'static,

@@ -88,8 +88,8 @@ use crate::core::widget;
 use crate::core::widget::tree::{self, Tree};
 use crate::core::window;
 use crate::core::{
-    self, Background, Border, Clipboard, Color, Element, Event, Layout, Length,
-    Pixels, Point, Rectangle, Shell, Size, Theme, Vector, Widget,
+    self, Background, Border, Color, Element, Event, Layout, Length, Pixels, Point, Rectangle,
+    Shell, Size, Theme, Vector, Widget,
 };
 
 const DRAG_DEADBAND_DISTANCE: f32 = 10.0;
@@ -147,12 +147,8 @@ const THICKNESS_RATIO: f32 = 25.0;
 ///     .into()
 /// }
 /// ```
-pub struct PaneGrid<
-    'a,
-    Message,
-    Theme = crate::Theme,
-    Renderer = crate::Renderer,
-> where
+pub struct PaneGrid<'a, Message, Theme = crate::Theme, Renderer = crate::Renderer>
+where
     Theme: Catalog,
     Renderer: core::Renderer,
 {
@@ -287,10 +283,7 @@ where
     /// Sets the style class of the [`PaneGrid`].
     #[cfg(feature = "advanced")]
     #[must_use]
-    pub fn class(
-        mut self,
-        class: impl Into<<Theme as Catalog>::Class<'a>>,
-    ) -> Self {
+    pub fn class(mut self, class: impl Into<<Theme as Catalog>::Class<'a>>) -> Self {
         self.class = class.into();
         self
     }
@@ -316,31 +309,20 @@ where
         let resize_leeway = self.on_resize.as_ref().map(|(leeway, _)| *leeway);
         let node = self.internal.layout();
 
-        let resize_axis =
-            action.picked_split().map(|(_, axis)| axis).or_else(|| {
-                resize_leeway.and_then(|leeway| {
-                    let cursor_position = cursor.position()?;
-                    let bounds = layout.bounds();
+        let resize_axis = action.picked_split().map(|(_, axis)| axis).or_else(|| {
+            resize_leeway.and_then(|leeway| {
+                let cursor_position = cursor.position()?;
+                let bounds = layout.bounds();
 
-                    let splits = node.split_regions(
-                        self.spacing,
-                        self.min_size,
-                        bounds.size(),
-                    );
+                let splits = node.split_regions(self.spacing, self.min_size, bounds.size());
 
-                    let relative_cursor = Point::new(
-                        cursor_position.x - bounds.x,
-                        cursor_position.y - bounds.y,
-                    );
+                let relative_cursor =
+                    Point::new(cursor_position.x - bounds.x, cursor_position.y - bounds.y);
 
-                    hovered_split(
-                        splits.iter(),
-                        self.spacing + leeway,
-                        relative_cursor,
-                    )
+                hovered_split(splits.iter(), self.spacing + leeway, relative_cursor)
                     .map(|(_, axis, _)| axis)
-                })
-            });
+            })
+        });
 
         if let Some(resize_axis) = resize_axis {
             return Some(match resize_axis {
@@ -423,11 +405,10 @@ where
         limits: &layout::Limits,
     ) -> layout::Node {
         let bounds = limits.resolve(self.width, self.height, Size::ZERO);
-        let regions = self.internal.layout().pane_regions(
-            self.spacing,
-            self.min_size,
-            bounds,
-        );
+        let regions = self
+            .internal
+            .layout()
+            .pane_regions(self.spacing, self.min_size, bounds);
 
         let children = self
             .panes
@@ -446,11 +427,7 @@ where
                 let region = regions.get(pane)?;
                 let size = Size::new(region.width, region.height);
 
-                let node = content.layout(
-                    tree,
-                    renderer,
-                    &layout::Limits::new(size, size),
-                );
+                let node = content.layout(tree, renderer, &layout::Limits::new(size, size));
 
                 Some(node.move_to(Point::new(region.x, region.y)))
             })
@@ -491,7 +468,6 @@ where
         layout: Layout<'_>,
         cursor: mouse::Cursor,
         renderer: &Renderer,
-        clipboard: &mut dyn Clipboard,
         shell: &mut Shell<'_, Message>,
         viewport: &Rectangle,
     ) {
@@ -522,8 +498,7 @@ where
             let is_picked = picked_pane == Some(pane);
 
             content.update(
-                tree, event, layout, cursor, renderer, clipboard, shell,
-                viewport, is_picked,
+                tree, event, layout, cursor, renderer, shell, viewport, is_picked,
             );
         }
 
@@ -542,11 +517,8 @@ where
                                 cursor_position.y - bounds.y,
                             );
 
-                            let splits = node.split_regions(
-                                self.spacing,
-                                self.min_size,
-                                bounds.size(),
-                            );
+                            let splits =
+                                node.split_regions(self.spacing, self.min_size, bounds.size());
 
                             let clicked_split = hovered_split(
                                 splits.iter(),
@@ -556,8 +528,7 @@ where
 
                             if let Some((split, axis, _)) = clicked_split {
                                 if action.picked_pane().is_none() {
-                                    *action =
-                                        state::Action::Resizing { split, axis };
+                                    *action = state::Action::Resizing { split, axis };
                                 }
                             } else {
                                 click_pane(
@@ -565,10 +536,7 @@ where
                                     layout,
                                     cursor_position,
                                     shell,
-                                    self.panes
-                                        .iter()
-                                        .copied()
-                                        .zip(&self.contents),
+                                    self.panes.iter().copied().zip(&self.contents),
                                     &self.on_click,
                                     on_drag,
                                 );
@@ -595,11 +563,8 @@ where
                     && let Some(on_drag) = on_drag
                     && let Some(cursor_position) = cursor.position()
                 {
-                    if cursor_position.distance(origin) > DRAG_DEADBAND_DISTANCE
-                    {
-                        let event = if let Some(edge) =
-                            in_edge(layout, cursor_position)
-                        {
+                    if cursor_position.distance(origin) > DRAG_DEADBAND_DISTANCE {
+                        let event = if let Some(edge) = in_edge(layout, cursor_position) {
                             DragEvent::Dropped {
                                 pane,
                                 target: Target::Edge(edge),
@@ -617,9 +582,7 @@ where
                                 });
 
                             match dropped_region {
-                                Some(((target, _), region))
-                                    if pane != target =>
-                                {
+                                Some(((target, _), region)) if pane != target => {
                                     DragEvent::Dropped {
                                         pane,
                                         target: Target::Pane(target, region),
@@ -643,37 +606,25 @@ where
                     if let Some((split, _)) = action.picked_split() {
                         let bounds = layout.bounds();
 
-                        let splits = node.split_regions(
-                            self.spacing,
-                            self.min_size,
-                            bounds.size(),
-                        );
+                        let splits = node.split_regions(self.spacing, self.min_size, bounds.size());
 
                         if let Some((axis, rectangle, _)) = splits.get(&split)
                             && let Some(cursor_position) = cursor.position()
                         {
                             let ratio = match axis {
                                 Axis::Horizontal => {
-                                    let position = cursor_position.y
-                                        - bounds.y
-                                        - rectangle.y;
+                                    let position = cursor_position.y - bounds.y - rectangle.y;
 
-                                    (position / rectangle.height)
-                                        .clamp(0.0, 1.0)
+                                    (position / rectangle.height).clamp(0.0, 1.0)
                                 }
                                 Axis::Vertical => {
-                                    let position = cursor_position.x
-                                        - bounds.x
-                                        - rectangle.x;
+                                    let position = cursor_position.x - bounds.x - rectangle.x;
 
                                     (position / rectangle.width).clamp(0.0, 1.0)
                                 }
                             };
 
-                            shell.publish(on_resize(ResizeEvent {
-                                split,
-                                ratio,
-                            }));
+                            shell.publish(on_resize(ResizeEvent { split, ratio }));
 
                             shell.capture_event();
                         }
@@ -699,20 +650,17 @@ where
                                 .is_none_or(|maximized| **pane == maximized)
                         })
                         .find_map(|((_pane, content), layout)| {
-                            content.grid_interaction(
-                                layout,
-                                cursor,
-                                on_drag.is_some(),
-                            )
+                            content.grid_interaction(layout, cursor, on_drag.is_some())
                         })
                 })
                 .unwrap_or(mouse::Interaction::None);
 
             if let Event::Window(window::Event::RedrawRequested(_now)) = event {
                 self.last_mouse_interaction = Some(interaction);
-            } else if self.last_mouse_interaction.is_some_and(
-                |last_mouse_interaction| last_mouse_interaction != interaction,
-            ) {
+            } else if self
+                .last_mouse_interaction
+                .is_some_and(|last_mouse_interaction| last_mouse_interaction != interaction)
+            {
                 shell.request_redraw();
             }
         }
@@ -728,9 +676,7 @@ where
     ) -> mouse::Interaction {
         let Memory { action, .. } = tree.state.downcast_ref();
 
-        if let Some(grid_interaction) =
-            self.grid_interaction(action, layout, cursor)
-        {
+        if let Some(grid_interaction) = self.grid_interaction(action, layout, cursor) {
             return grid_interaction;
         }
 
@@ -773,29 +719,20 @@ where
         let node = self.internal.layout();
         let resize_leeway = self.on_resize.as_ref().map(|(leeway, _)| *leeway);
 
-        let picked_pane = action.picked_pane().filter(|(_, origin)| {
-            cursor
-                .position()
-                .map(|position| position.distance(*origin))
-                .unwrap_or_default()
-                > DRAG_DEADBAND_DISTANCE
-        });
+        let picked_pane = action.picked_pane();
+        let dragged_pane = picked_pane
+            .filter(|(_, origin)| is_dragging(*origin, cursor.position().unwrap_or_default()));
 
         let picked_split = action
             .picked_split()
             .and_then(|(split, axis)| {
                 let bounds = layout.bounds();
 
-                let splits = node.split_regions(
-                    self.spacing,
-                    self.min_size,
-                    bounds.size(),
-                );
+                let splits = node.split_regions(self.spacing, self.min_size, bounds.size());
 
                 let (_axis, region, ratio) = splits.get(&split)?;
 
-                let region =
-                    axis.split_line_bounds(*region, *ratio, self.spacing);
+                let region = axis.split_line_bounds(*region, *ratio, self.spacing);
 
                 Some((axis, region + Vector::new(bounds.x, bounds.y), true))
             })
@@ -804,28 +741,15 @@ where
                     let cursor_position = cursor.position()?;
                     let bounds = layout.bounds();
 
-                    let relative_cursor = Point::new(
-                        cursor_position.x - bounds.x,
-                        cursor_position.y - bounds.y,
-                    );
+                    let relative_cursor =
+                        Point::new(cursor_position.x - bounds.x, cursor_position.y - bounds.y);
 
-                    let splits = node.split_regions(
-                        self.spacing,
-                        self.min_size,
-                        bounds.size(),
-                    );
+                    let splits = node.split_regions(self.spacing, self.min_size, bounds.size());
 
-                    let (_split, axis, region) = hovered_split(
-                        splits.iter(),
-                        self.spacing + leeway,
-                        relative_cursor,
-                    )?;
+                    let (_split, axis, region) =
+                        hovered_split(splits.iter(), self.spacing + leeway, relative_cursor)?;
 
-                    Some((
-                        axis,
-                        region + Vector::new(bounds.x, bounds.y),
-                        false,
-                    ))
+                    Some((axis, region + Vector::new(bounds.x, bounds.y), false))
                 }
                 None => None,
             });
@@ -835,8 +759,6 @@ where
         } else {
             cursor
         };
-
-        let mut render_picked_pane = None;
 
         let pane_in_edge = if picked_pane.is_some() {
             cursor
@@ -862,11 +784,8 @@ where
             })
         {
             match picked_pane {
-                Some((dragging, origin)) if id == dragging => {
-                    render_picked_pane =
-                        Some(((content, tree), origin, pane_layout));
-                }
-                Some((dragging, _)) if id != dragging => {
+                Some((dragging, _)) if id == dragging => {}
+                Some(_) => {
                     content.draw(
                         tree,
                         renderer,
@@ -877,12 +796,10 @@ where
                         viewport,
                     );
 
-                    if picked_pane.is_some()
+                    if let Some(cursor_position) = cursor.position()
+                        && dragged_pane.is_some()
                         && pane_in_edge.is_none()
-                        && let Some(region) =
-                            cursor.position().and_then(|cursor_position| {
-                                layout_region(pane_layout, cursor_position)
-                            })
+                        && let Some(region) = layout_region(pane_layout, cursor_position)
                     {
                         let bounds = layout_region_bounds(pane_layout, region);
 
@@ -910,7 +827,9 @@ where
             }
         }
 
-        if let Some(edge) = pane_in_edge {
+        if dragged_pane.is_some()
+            && let Some(edge) = pane_in_edge
+        {
             let bounds = edge_bounds(layout, edge);
 
             renderer.fill_quad(
@@ -923,30 +842,7 @@ where
             );
         }
 
-        // Render picked pane last
-        if let Some(((content, tree), origin, layout)) = render_picked_pane
-            && let Some(cursor_position) = cursor.position()
-        {
-            let bounds = layout.bounds();
-
-            let translation = cursor_position - Point::new(origin.x, origin.y);
-
-            renderer.with_translation(translation, |renderer| {
-                renderer.with_layer(bounds, |renderer| {
-                    content.draw(
-                        tree,
-                        renderer,
-                        theme,
-                        defaults,
-                        layout,
-                        pane_cursor,
-                        viewport,
-                    );
-                });
-            });
-        }
-
-        if picked_pane.is_none()
+        if dragged_pane.is_none()
             && let Some((axis, split_region, is_picked)) = picked_split
         {
             let highlight = if is_picked {
@@ -960,16 +856,13 @@ where
                     bounds: match axis {
                         Axis::Horizontal => Rectangle {
                             x: split_region.x,
-                            y: (split_region.y
-                                + (split_region.height - highlight.width)
-                                    / 2.0)
+                            y: (split_region.y + (split_region.height - highlight.width) / 2.0)
                                 .round(),
                             width: split_region.width,
                             height: highlight.width,
                         },
                         Axis::Vertical => Rectangle {
-                            x: (split_region.x
-                                + (split_region.width - highlight.width) / 2.0)
+                            x: (split_region.x + (split_region.width - highlight.width) / 2.0)
                                 .round(),
                             y: split_region.y,
                             width: highlight.width,
@@ -991,6 +884,9 @@ where
         viewport: &Rectangle,
         translation: Vector,
     ) -> Option<overlay::Element<'b, Message, Theme, Renderer>> {
+        let state = tree.state.downcast_ref::<Memory>();
+        let picked_pane = state.action.picked_pane();
+
         let children = self
             .panes
             .iter()
@@ -998,7 +894,7 @@ where
             .zip(&mut self.contents)
             .zip(&mut tree.children)
             .zip(layout.children())
-            .filter_map(|(((pane, content), state), layout)| {
+            .filter_map(|(((pane, content), tree), layout)| {
                 if self
                     .internal
                     .maximized()
@@ -1007,12 +903,79 @@ where
                     return None;
                 }
 
-                content.overlay(state, layout, renderer, viewport, translation)
+                if let Some((picked_pane, origin)) = picked_pane
+                    && picked_pane == pane
+                {
+                    return Some(overlay::Element::new(Box::new(PickedPane {
+                        origin,
+                        content,
+                        tree,
+                        layout,
+                    })));
+                }
+
+                content.overlay(tree, layout, renderer, viewport, translation)
             })
             .collect::<Vec<_>>();
 
         (!children.is_empty()).then(|| Group::with_children(children).overlay())
     }
+}
+
+struct PickedPane<'a, 'b, Message, Theme, Renderer>
+where
+    Theme: container::Catalog,
+    Renderer: core::Renderer,
+{
+    content: &'a Content<'b, Message, Theme, Renderer>,
+    origin: Point,
+    tree: &'a mut Tree,
+    layout: Layout<'a>,
+}
+
+impl<'a, 'b, Message, Theme, Renderer> core::Overlay<Message, Theme, Renderer>
+    for PickedPane<'a, 'b, Message, Theme, Renderer>
+where
+    Theme: container::Catalog,
+    Renderer: core::Renderer,
+{
+    fn layout(&mut self, _renderer: &Renderer, _bounds: Size) -> layout::Node {
+        // TODO: Mouse translation
+        layout::Node::new(self.layout.bounds().size()).move_to(self.origin)
+    }
+
+    fn draw(
+        &self,
+        renderer: &mut Renderer,
+        theme: &Theme,
+        style: &renderer::Style,
+        _layout: Layout<'_>,
+        cursor: mouse::Cursor,
+    ) {
+        let cursor_position = cursor.position().unwrap_or_default();
+
+        let translation = if is_dragging(self.origin, cursor_position) {
+            cursor_position - self.origin
+        } else {
+            Vector::ZERO
+        };
+
+        renderer.with_translation(translation, |renderer| {
+            self.content.draw(
+                self.tree,
+                renderer,
+                theme,
+                style,
+                self.layout,
+                mouse::Cursor::Unavailable,
+                &Rectangle::INFINITE,
+            );
+        });
+    }
+}
+
+fn is_dragging(origin: Point, cursor: Point) -> bool {
+    cursor.distance(origin) > DRAG_DEADBAND_DISTANCE
 }
 
 impl<'a, Message, Theme, Renderer> From<PaneGrid<'a, Message, Theme, Renderer>>
@@ -1093,14 +1056,11 @@ fn in_edge(layout: Layout<'_>, cursor: Point) -> Option<Edge> {
 
     if cursor.x > bounds.x && cursor.x < bounds.x + thickness {
         Some(Edge::Left)
-    } else if cursor.x > bounds.x + bounds.width - thickness
-        && cursor.x < bounds.x + bounds.width
-    {
+    } else if cursor.x > bounds.x + bounds.width - thickness && cursor.x < bounds.x + bounds.width {
         Some(Edge::Right)
     } else if cursor.y > bounds.y && cursor.y < bounds.y + thickness {
         Some(Edge::Top)
-    } else if cursor.y > bounds.y + bounds.height - thickness
-        && cursor.y < bounds.y + bounds.height
+    } else if cursor.y > bounds.y + bounds.height - thickness && cursor.y < bounds.y + bounds.height
     {
         Some(Edge::Bottom)
     } else {
@@ -1317,7 +1277,7 @@ impl Catalog for Theme {
 
 /// The default style of a [`PaneGrid`].
 pub fn default(theme: &Theme) -> Style {
-    let palette = theme.extended_palette();
+    let palette = theme.palette();
 
     Style {
         hovered_region: Highlight {

@@ -25,8 +25,7 @@ use crate::core::mouse;
 use crate::core::renderer;
 use crate::core::widget::Tree;
 use crate::core::{
-    self, Background, Color, Element, Layout, Length, Rectangle, Size, Theme,
-    Widget,
+    self, Background, Color, Element, Layout, Length, Rectangle, Size, Theme, Widget,
 };
 
 use std::ops::RangeInclusive;
@@ -142,8 +141,7 @@ where
     }
 }
 
-impl<Message, Theme, Renderer> Widget<Message, Theme, Renderer>
-    for ProgressBar<'_, Theme>
+impl<Message, Theme, Renderer> Widget<Message, Theme, Renderer> for ProgressBar<'_, Theme>
 where
     Theme: Catalog,
     Renderer: core::Renderer,
@@ -236,9 +234,7 @@ where
     Theme: 'a + Catalog,
     Renderer: 'a + core::Renderer,
 {
-    fn from(
-        progress_bar: ProgressBar<'a, Theme>,
-    ) -> Element<'a, Message, Theme, Renderer> {
+    fn from(progress_bar: ProgressBar<'a, Theme>) -> Element<'a, Message, Theme, Renderer> {
         Element::new(progress_bar)
     }
 }
@@ -285,14 +281,14 @@ impl Catalog for Theme {
 
 /// The primary style of a [`ProgressBar`].
 pub fn primary(theme: &Theme) -> Style {
-    let palette = theme.extended_palette();
+    let palette = theme.palette();
 
     styled(palette.background.strong.color, palette.primary.base.color)
 }
 
 /// The secondary style of a [`ProgressBar`].
 pub fn secondary(theme: &Theme) -> Style {
-    let palette = theme.extended_palette();
+    let palette = theme.palette();
 
     styled(
         palette.background.strong.color,
@@ -302,29 +298,26 @@ pub fn secondary(theme: &Theme) -> Style {
 
 /// The success style of a [`ProgressBar`].
 pub fn success(theme: &Theme) -> Style {
-    let palette = theme.extended_palette();
+    let palette = theme.palette();
 
     styled(palette.background.strong.color, palette.success.base.color)
 }
 
 /// The warning style of a [`ProgressBar`].
 pub fn warning(theme: &Theme) -> Style {
-    let palette = theme.extended_palette();
+    let palette = theme.palette();
 
     styled(palette.background.strong.color, palette.warning.base.color)
 }
 
 /// The danger style of a [`ProgressBar`].
 pub fn danger(theme: &Theme) -> Style {
-    let palette = theme.extended_palette();
+    let palette = theme.palette();
 
     styled(palette.background.strong.color, palette.danger.base.color)
 }
 
-fn styled(
-    background: impl Into<Background>,
-    bar: impl Into<Background>,
-) -> Style {
+fn styled(background: impl Into<Background>, bar: impl Into<Background>) -> Style {
     Style {
         background: background.into(),
         bar: bar.into(),

@@ -8,9 +8,7 @@ pub use highlighter::Highlighter;
 pub use paragraph::Paragraph;
 
 use crate::alignment;
-use crate::{
-    Background, Border, Color, Padding, Pixels, Point, Rectangle, Size,
-};
+use crate::{Background, Border, Color, Padding, Pixels, Point, Rectangle, Size};
 
 use std::borrow::Cow;
 use std::hash::{Hash, Hasher};
@@ -44,6 +42,19 @@ pub struct Text<Content = String, Font = crate::Font> {
 
     /// The [`Wrapping`] strategy of the [`Text`].
     pub wrapping: Wrapping,
+
+    /// The [`Ellipsis`] strategy of the [`Text`].
+    pub ellipsis: Ellipsis,
+
+    /// The scale factor that may be used to internally scale the layout
+    /// calculation of the [`Paragraph`] and leverage metrics hinting.
+    ///
+    /// Effectively, this defines the "base" layout that will be used for
+    /// linear scaling.
+    ///
+    /// If `None`, hinting will be disabled and subpixel positioning will be
+    /// performed.
+    pub hint_factor: Option<f32>,
 }
 
 impl<Content, Font> Text<Content, Font>
@@ -63,6 +74,8 @@ where
             align_y: self.align_y,
             shaping: self.shaping,
             wrapping: self.wrapping,
+            ellipsis: self.ellipsis,
+            hint_factor: self.hint_factor,
         }
     }
 }
@@ -190,6 +203,22 @@ pub enum Wrapping {
     Glyph,
     /// Wraps at the word level, or fallback to glyph level if a word can't fit on a line by itself.
     WordOrGlyph,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+/// The ellipsis strategy of some text.
+pub enum Ellipsis {
+    /// No ellipsis.
+    ///
+    /// This is the default.
+    #[default]
+    None,
+    /// Ellipsize the start of the last visual line in the text.
+    Start,
+    /// Ellipsize the middle of the last visual line in the text.
+    Middle,
+    /// Ellipsize the end of the last visual line in the text.
+    End,
 }
 
 /// The height of a line of text in a paragraph.
@@ -473,10 +502,7 @@ impl<'a, Link, Font> Span<'a, Link, Font> {
     }
 
     /// Sets the [`Background`] of the [`Span`], if any.
-    pub fn background_maybe(
-        mut self,
-        background: Option<impl Into<Background>>,
-    ) -> Self {
+    pub fn background_maybe(mut self, background: Option<impl Into<Background>>) -> Self {
         let Some(background) = background else {
             return self;
         };

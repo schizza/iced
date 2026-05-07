@@ -1,8 +1,8 @@
 use iced::highlighter;
 use iced::keyboard;
 use iced::widget::{
-    button, center_x, column, container, operation, pick_list, row, space,
-    text, text_editor, toggler, tooltip,
+    button, center_x, column, container, operation, pick_list, row, space, text, text_editor,
+    toggler, tooltip,
 };
 use iced::window;
 use iced::{Center, Element, Fill, Font, Task, Theme, Window};
@@ -54,10 +54,7 @@ impl Editor {
             },
             Task::batch([
                 Task::perform(
-                    load_file(concat!(
-                        env!("CARGO_MANIFEST_DIR"),
-                        "/src/main.rs",
-                    )),
+                    load_file(concat!(env!("CARGO_MANIFEST_DIR"), "/src/main.rs",)),
                     Message::FileOpened,
                 ),
                 operation::focus(EDITOR),
@@ -129,10 +126,7 @@ impl Editor {
                         text.push_str(ending.as_str());
                     }
 
-                    Task::perform(
-                        save_file(self.file.clone(), text),
-                        Message::FileSaved,
-                    )
+                    Task::perform(save_file(self.file.clone(), text), Message::FileSaved)
                 }
             }
             Message::FileSaved(result) => {
@@ -166,10 +160,11 @@ impl Editor {
                 .label("Word Wrap")
                 .on_toggle(Message::WordWrapToggled),
             pick_list(
-                highlighter::Theme::ALL,
                 Some(self.theme),
-                Message::ThemeSelected
+                highlighter::Theme::ALL,
+                highlighter::Theme::to_string,
             )
+            .on_select(Message::ThemeSelected)
             .text_size(14)
             .padding([5, 10])
         ]
@@ -222,12 +217,8 @@ impl Editor {
                 )
                 .key_binding(|key_press| {
                     match key_press.key.as_ref() {
-                        keyboard::Key::Character("s")
-                            if key_press.modifiers.command() =>
-                        {
-                            Some(text_editor::Binding::Custom(
-                                Message::SaveFile,
-                            ))
+                        keyboard::Key::Character("s") if key_press.modifiers.command() => {
+                            Some(text_editor::Binding::Custom(Message::SaveFile))
                         }
                         _ => text_editor::Binding::from_key_press(key_press),
                     }
@@ -262,16 +253,13 @@ fn open_file(
         .set_parent(&window);
 
     async move {
-        let picked_file =
-            dialog.pick_file().await.ok_or(Error::DialogClosed)?;
+        let picked_file = dialog.pick_file().await.ok_or(Error::DialogClosed)?;
 
         load_file(picked_file).await
     }
 }
 
-async fn load_file(
-    path: impl Into<PathBuf>,
-) -> Result<(PathBuf, Arc<String>), Error> {
+async fn load_file(path: impl Into<PathBuf>) -> Result<(PathBuf, Arc<String>), Error> {
     let path = path.into();
 
     let contents = tokio::fs::read_to_string(&path)
@@ -282,10 +270,7 @@ async fn load_file(
     Ok((path, contents))
 }
 
-async fn save_file(
-    path: Option<PathBuf>,
-    contents: String,
-) -> Result<PathBuf, Error> {
+async fn save_file(path: Option<PathBuf>, contents: String) -> Result<PathBuf, Error> {
     let path = if let Some(path) = path {
         path
     } else {
@@ -338,7 +323,7 @@ fn open_icon<'a, Message>() -> Element<'a, Message> {
 }
 
 fn icon<'a, Message>(codepoint: char) -> Element<'a, Message> {
-    const ICON_FONT: Font = Font::with_name("editor-icons");
+    const ICON_FONT: Font = Font::new("editor-icons");
 
     text(codepoint)
         .font(ICON_FONT)
